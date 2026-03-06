@@ -1,0 +1,511 @@
+from rest_framework              import generics, status
+from rest_framework.decorators  import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response    import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils import timezone
+
+from .models import (
+    User, SeniorProfile, CaregiverProfile, FamilyProfile, VolunteerProfile,
+    SeniorCaregiver, SeniorFamily, SeniorVolunteer,
+    Doctor, SeniorDoctor,
+    Reminder, HealthNote, SOSRequest,
+    CommunityEvent, EventAttendance,
+    ChatMessage, ActivityLog,
+)
+from .serializers import (
+    LoginSerializer, RegisterSerializer, UserSerializer,
+    SeniorProfileSerializer, CaregiverProfileSerializer,
+    FamilyProfileSerializer, VolunteerProfileSerializer,
+    SeniorCaregiverSerializer, SeniorFamilySerializer, SeniorVolunteerSerializer,
+    DoctorSerializer, SeniorDoctorSerializer,
+    ReminderSerializer, HealthNoteSerializer, SOSRequestSerializer,
+    CommunityEventSerializer, EventAttendanceSerializer,
+    ChatMessageSerializer, ActivityLogSerializer,
+)
+from .permissions import (
+    IsAdmin, IsAdminOrFamily, IsAdminOrCaregiver,
+    IsCaregiverOrFamily, IsNotVolunteer, IsSeniorOrCaregiverOrFamily,
+)
+
+
+# =====================================================
+# SENIOR BUDDY — views.py
+# All API endpoints
+# =====================================================
+
+
+# =====================================================
+# AUTH ENDPOINTS
+# =====================================================
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    """
+    POST /api/login/
+    Body: { "email": "...", "password": "..." }
+    Returns: { "access": "...", "refresh": "...", "user": {...} }
+
+    The Android app saves the access token and sends it
+    in every future request as:
+    Header → Authorization: Bearer <access_token>
+    """
+    serializer = LoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    user    = serializer.validated_data['user']
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        'access':  str(refresh.access_token),
+        'refresh': str(refresh),
+        'user':    UserSerializer(user).data,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_view(request):
+    """
+    POST /api/register/
+    Body: { "full_name": "...", "email": "...", "phone": "...",
+            "password": "...", "role_name": "SENIOR" }
+    """
+    serializer = RegisterSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.save()
+
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access':  str(refresh.access_token),
+        'refresh': str(refresh),
+        'user':    UserSerializer(user).data,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """
+    POST /api/logout/
+    Body: { "refresh": "<refresh_token>" }
+    Blacklists the refresh token so it can't be reused.
+    """
+    try:
+        token = RefreshToken(request.data['refresh'])
+        token.blacklist()
+        return Response({'message': 'Logged out successfully.'})
+    except Exception:
+        return Response({'error': 'Invalid token.'}, status=400)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    """
+    GET /api/me/
+    Returns the currently logged-in user's details.
+    Android uses this to know which role dashboard to show.
+    """
+    return Response(UserSerializer(request.user).data)
+
+
+# =====================================================
+# USER ENDPOINTS (Admin only)
+# =====================================================
+
+class UserListView(generics.ListAPIView):
+    """GET /api/users/ — List all users (Admin only)"""
+    queryset           = User.objects.all().order_by('-created_at')
+    serializer_class   = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+
+class UserDetailView(generics.RetrieveUpdateAPIView):
+    """GET/PUT /api/users/<id>/ — View or update a user (Admin only)"""
+    queryset           = User.objects.all()
+    serializer_class   = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+
+# =====================================================
+# PROFILE ENDPOINTS
+# =====================================================
+
+class SeniorProfileListView(generics.ListCreateAPIView):
+    """
+    GET  /api/seniors/        — List all seniors
+    POST /api/seniors/        — Create a senior profile
+    Only Admin, Caregiver, Family can see this.
+    Volunteers are blocked (no medical data access).
+    """
+    queryset           = SeniorProfile.objects.select_related('senior').all()
+    serializer_class   = SeniorProfileSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+
+class SeniorProfileDetailView(generics.RetrieveUpdateAPIView):
+    """GET/PUT /api/seniors/<id>/"""
+    queryset           = SeniorProfile.objects.all()
+    serializer_class   = SeniorProfileSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+
+class CaregiverProfileListView(generics.ListCreateAPIView):
+    """GET/POST /api/caregivers/"""
+    queryset           = CaregiverProfile.objects.select_related('caregiver').all()
+    serializer_class   = CaregiverProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class FamilyProfileListView(generics.ListCreateAPIView):
+    """GET/POST /api/family/"""
+    queryset           = FamilyProfile.objects.select_related('family').all()
+    serializer_class   = FamilyProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class VolunteerProfileListView(generics.ListCreateAPIView):
+    """GET/POST /api/volunteers/"""
+    queryset           = VolunteerProfile.objects.select_related('volunteer').all()
+    serializer_class   = VolunteerProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# =====================================================
+# RELATIONSHIP ENDPOINTS
+# =====================================================
+
+class SeniorCaregiverListView(generics.ListCreateAPIView):
+    """GET/POST /api/assignments/caregivers/"""
+    queryset           = SeniorCaregiver.objects.select_related('senior', 'caregiver').all()
+    serializer_class   = SeniorCaregiverSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrFamily]
+
+
+class SeniorFamilyListView(generics.ListCreateAPIView):
+    """GET/POST /api/assignments/family/"""
+    queryset           = SeniorFamily.objects.select_related('senior', 'family').all()
+    serializer_class   = SeniorFamilySerializer
+    permission_classes = [IsAuthenticated, IsAdminOrFamily]
+
+
+class SeniorVolunteerListView(generics.ListCreateAPIView):
+    """GET/POST /api/assignments/volunteers/"""
+    queryset           = SeniorVolunteer.objects.select_related('senior', 'volunteer').all()
+    serializer_class   = SeniorVolunteerSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrFamily]
+
+
+# =====================================================
+# DOCTOR ENDPOINTS
+# =====================================================
+
+class DoctorListView(generics.ListCreateAPIView):
+    """GET/POST /api/doctors/"""
+    queryset           = Doctor.objects.all()
+    serializer_class   = DoctorSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def perform_create(self, serializer):
+        serializer.save(added_by=self.request.user)
+
+
+class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/DELETE /api/doctors/<id>/"""
+    queryset           = Doctor.objects.all()
+    serializer_class   = DoctorSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrFamily]
+
+
+class SeniorDoctorListView(generics.ListCreateAPIView):
+    """GET/POST /api/assignments/doctors/"""
+    queryset           = SeniorDoctor.objects.select_related('senior', 'doctor').all()
+    serializer_class   = SeniorDoctorSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def perform_create(self, serializer):
+        serializer.save(added_by=self.request.user)
+
+
+# =====================================================
+# REMINDER ENDPOINTS
+# =====================================================
+
+class ReminderListView(generics.ListCreateAPIView):
+    """
+    GET  /api/reminders/       — List reminders
+    POST /api/reminders/       — Create a reminder
+    Senior/Caregiver/Family can create.
+    Each user only sees reminders relevant to them.
+    """
+    serializer_class   = ReminderSerializer
+    permission_classes = [IsAuthenticated, IsSeniorOrCaregiverOrFamily]
+
+    def get_queryset(self):
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'SENIOR' in roles:
+            # Senior sees their own reminders
+            return Reminder.objects.filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            # Caregiver sees reminders for their assigned seniors
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return Reminder.objects.filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            # Family sees reminders for their linked seniors
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return Reminder.objects.filter(senior_id__in=senior_ids)
+        elif 'ADMIN' in roles:
+            return Reminder.objects.all()
+        return Reminder.objects.none()
+
+
+class ReminderDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/DELETE /api/reminders/<id>/"""
+    queryset           = Reminder.objects.all()
+    serializer_class   = ReminderSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# =====================================================
+# HEALTH NOTE ENDPOINTS
+# =====================================================
+
+class HealthNoteListView(generics.ListCreateAPIView):
+    """
+    GET  /api/health-notes/    — List health notes
+    POST /api/health-notes/    — Write a note (Caregiver only)
+    Volunteers cannot see this.
+    """
+    serializer_class   = HealthNoteSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self):
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return HealthNote.objects.filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return HealthNote.objects.filter(senior_id__in=senior_ids)
+        elif 'ADMIN' in roles:
+            return HealthNote.objects.all()
+        return HealthNote.objects.none()
+
+
+# =====================================================
+# SOS ENDPOINTS
+# =====================================================
+
+class SOSListView(generics.ListAPIView):
+    """GET /api/sos/ — List SOS requests"""
+    serializer_class   = SOSRequestSerializer
+    permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self):
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'SENIOR' in roles:
+            return SOSRequest.objects.filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            return SOSRequest.objects.filter(status__in=['PENDING', 'IN_PROGRESS'])
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return SOSRequest.objects.filter(senior_id__in=senior_ids)
+        elif 'ADMIN' in roles:
+            return SOSRequest.objects.all()
+        return SOSRequest.objects.none()
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trigger_sos(request):
+    """
+    POST /api/sos/trigger/
+    Senior triggers an emergency SOS alert.
+    No body needed — uses the logged-in user as the senior.
+    """
+    sos = SOSRequest.objects.create(
+        senior=request.user,
+        status='PENDING'
+    )
+    return Response(
+        SOSRequestSerializer(sos).data,
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def respond_sos(request, sos_id):
+    """
+    PATCH /api/sos/<id>/respond/
+    Caregiver/Admin picks up the SOS.
+    Sets handled_by to the current user and status to IN_PROGRESS.
+    """
+    try:
+        sos = SOSRequest.objects.get(sos_id=sos_id)
+    except SOSRequest.DoesNotExist:
+        return Response({'error': 'SOS not found.'}, status=404)
+
+    sos.handled_by = request.user
+    sos.status     = 'IN_PROGRESS'
+    sos.save()
+    return Response(SOSRequestSerializer(sos).data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def resolve_sos(request, sos_id):
+    """
+    PATCH /api/sos/<id>/resolve/
+    Marks the SOS as RESOLVED with a timestamp.
+    """
+    try:
+        sos = SOSRequest.objects.get(sos_id=sos_id)
+    except SOSRequest.DoesNotExist:
+        return Response({'error': 'SOS not found.'}, status=404)
+
+    sos.status      = 'RESOLVED'
+    sos.resolved_at = timezone.now()
+    sos.save()
+    return Response(SOSRequestSerializer(sos).data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def escalate_sos(request, sos_id):
+    """
+    PATCH /api/sos/<id>/escalate/
+    Family member escalates an unresolved SOS.
+    """
+    try:
+        sos = SOSRequest.objects.get(sos_id=sos_id)
+    except SOSRequest.DoesNotExist:
+        return Response({'error': 'SOS not found.'}, status=404)
+
+    sos.escalated_by = request.user
+    sos.escalated_at = timezone.now()
+    sos.save()
+    return Response(SOSRequestSerializer(sos).data)
+
+
+# =====================================================
+# COMMUNITY EVENT ENDPOINTS
+# =====================================================
+
+class CommunityEventListView(generics.ListCreateAPIView):
+    """GET/POST /api/events/"""
+    queryset           = CommunityEvent.objects.all().order_by('event_date')
+    serializer_class   = CommunityEventSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class CommunityEventDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/DELETE /api/events/<id>/"""
+    queryset           = CommunityEvent.objects.all()
+    serializer_class   = CommunityEventSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class EventAttendanceListView(generics.ListCreateAPIView):
+    """GET/POST /api/events/<id>/attend/"""
+    serializer_class   = EventAttendanceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return EventAttendance.objects.filter(event_id=self.kwargs['event_id'])
+
+    def perform_create(self, serializer):
+        event = CommunityEvent.objects.get(event_id=self.kwargs['event_id'])
+        serializer.save(user=self.request.user, event=event)
+
+
+# =====================================================
+# CHAT ENDPOINTS
+# =====================================================
+
+class ChatListView(generics.ListCreateAPIView):
+    """
+    GET  /api/chat/<user_id>/  — Get conversation with a specific user
+    POST /api/chat/<user_id>/  — Send a message to that user
+    """
+    serializer_class   = ChatMessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        other_user_id = self.kwargs['user_id']
+        me = self.request.user
+        # Returns all messages between me and the other user
+        return ChatMessage.objects.filter(
+            sender_id=me.pk,     receiver_id=other_user_id
+        ) | ChatMessage.objects.filter(
+            sender_id=other_user_id, receiver_id=me.pk
+        ).order_by('sent_at')
+
+    def perform_create(self, serializer):
+        serializer.save(
+            sender=self.request.user,
+            receiver_id=self.kwargs['user_id']
+        )
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def mark_messages_read(request, user_id):
+    """
+    PATCH /api/chat/<user_id>/read/
+    Marks all messages from this user as read.
+    """
+    ChatMessage.objects.filter(
+        sender_id=user_id,
+        receiver=request.user,
+        is_read=False
+    ).update(is_read=True)
+    return Response({'message': 'Messages marked as read.'})
+
+
+# =====================================================
+# ACTIVITY LOG ENDPOINTS
+# =====================================================
+
+class ActivityLogListView(generics.ListCreateAPIView):
+    """
+    GET  /api/activity/   — View activity logs
+    POST /api/activity/   — Log an activity (Caregiver or Volunteer)
+    """
+    serializer_class   = ActivityLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'CAREGIVER' in roles or 'VOLUNTEER' in roles:
+            # Show logs they personally performed
+            return ActivityLog.objects.filter(performed_by=user)
+        elif 'FAMILY' in roles:
+            # Show logs for their linked seniors
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return ActivityLog.objects.filter(senior_id__in=senior_ids)
+        elif 'ADMIN' in roles:
+            return ActivityLog.objects.all()
+        return ActivityLog.objects.none()
