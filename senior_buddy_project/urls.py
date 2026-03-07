@@ -4,7 +4,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
     # Admin panel
-    path('admin/', admin.site.urls),
+    path('seniorbuddy-manage/', admin.site.urls),
 
     # All API endpoints
     path('api/', include('senior_buddy.urls')),
