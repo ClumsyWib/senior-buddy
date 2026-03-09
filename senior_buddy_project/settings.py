@@ -1,3 +1,4 @@
+from decouple import config
 import pymysql
 pymysql.install_as_MySQLdb()
 
@@ -16,17 +17,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY
 # Change SECRET_KEY before going live — never share it
 # -------------------------------------------------------
-SECRET_KEY = 'django-insecure-senior-buddy-change-this-in-production'
+SECRET_KEY = config('SECRET_KEY', default='yuvi')
 
 # Set to False before going live
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.railway.app']
     # Add your IP here if testing from Android device on same WiFi
     # e.g. '192.168.1.10',
-]
+
 
 
 # -------------------------------------------------------
@@ -56,6 +55,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',    # Must be first
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -282,3 +282,6 @@ JAZZMIN_UI_TWEAKS = {
         "success":   "btn-success",
     },
 }
+# Static files for Railway
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
