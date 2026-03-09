@@ -13,12 +13,13 @@ urlpatterns = [
     # --------------------------------------------------
     # AUTH
     # --------------------------------------------------
-    path('login/',    views.login_view,    name='login'),
-    path('register/', views.register_view, name='register'),
-    path('logout/',   views.logout_view,   name='logout'),
-    path('me/',       views.me_view,       name='me'),
-    path('my-seniors/', views.my_seniors, name='my-seniors'),
+    path('login/',    views.login_view,    name='login'), # Login with email & password, return JWT access + refresh tokens — used by frontend to authenticate users
+    path('register/', views.register_view, name='register'), # Register new user and create corresponding profile based on role (senior, caregiver, family, volunteer) — used by admin panel to create users, not public registration
+    path('logout/',   views.logout_view,   name='logout'), # Logout by blacklisting refresh token on backend — no frontend state to clear since we're stateless JWT auth
+    path('me/',       views.me_view,       name='me'), # Get current logged-in user info (email, role, etc.) — used by frontend to know who's logged in
+    path('my-seniors/', views.my_seniors, name='my-seniors'), # Get list of seniors assigned to logged-in caregiver/family/volunteer
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # Refresh access token using refresh token — no re-login needed
+    path('fcm-token/', views.update_fcm_token, name='fcm-token'), # Update FCM token for push notifications — called from mobile app when token changes
 
     # --------------------------------------------------
     # USERS (Admin only)

@@ -28,6 +28,8 @@ class User(AbstractUser):
     is_active  = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    fcm_token = models.CharField(max_length=255, blank=True, null=True) # For push notifications to mobile devices
+
     # Use email to log in instead of username
     USERNAME_FIELD  = 'email'
     REQUIRED_FIELDS = ['username', 'full_name', 'phone']

@@ -126,6 +126,25 @@ def me_view(request):
     """
     return Response(UserSerializer(request.user).data)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_fcm_token(request):
+    """
+    POST /api/fcm-token/
+    Body: { "fcm_token": "..." }
+    Android calls this after login to register their device for push notifications.
+    """
+    fcm_token = request.data.get('fcm_token')
+    if not fcm_token:
+        return Response(
+            {'error': 'fcm_token is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    request.user.fcm_token = fcm_token
+    request.user.save()
+    return Response({'message': 'FCM token updated successfully.'})
+
 
 # =====================================================
 # USER ENDPOINTS (Admin only)
