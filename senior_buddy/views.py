@@ -340,6 +340,26 @@ class SeniorDoctorListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(added_by=self.request.user)
 
+        # Caregiver or Family can only assign doctors to seniors they are linked to
+        if 'CAREGIVER' in roles:
+            is_assigned = SeniorCaregiver.objects.filter(
+                caregiver=user,senior=senior
+            ).exists()
+            if not is_assigned:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('You are not assigned to this senior.')
+            
+        # Family can only assign doctors to seniors they are linked to
+        elif 'FAMILY' in roles:
+            is_linked = SeniorFamily.objects.filter(
+                family=user, senior=senior
+            ).exists()
+            if not is_linked:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('You are not linked to this senior.')
+            
+        serializer.save(added_by=self.request.user)
+
 
 # =====================================================
 # REMINDER ENDPOINTS
