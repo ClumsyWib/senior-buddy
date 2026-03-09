@@ -78,9 +78,6 @@ class RegisterSerializer(serializers.ModelSerializer):
                 full_name=validated_data['full_name'],
                 password=password 
             )
-            user.phone = validated_data['phone']
-            user.full_name = validated_data['full_name']
-            user.save()
 
             # 2. Assign the role to user
             role = Role.objects.get(role_name=role_name)

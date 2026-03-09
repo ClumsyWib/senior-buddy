@@ -43,10 +43,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # Third party
-    'rest_framework',                       # Django REST Framework
-    'rest_framework_simplejwt',             # JWT tokens for Android login
-    'corsheaders',                          # Allow Android app to connect
-    'drf_spectacular',                      # Auto API documentation
+    'rest_framework',                           # Django REST Framework
+    'rest_framework_simplejwt',                 # JWT tokens for Android login
+    'rest_framework_simplejwt.token_blacklist', # For logout functionality
+    'corsheaders',                              # Allow Android app to connect
+    'drf_spectacular',                          # Auto API documentation
 
     # Our app
     'senior_buddy',

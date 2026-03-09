@@ -213,6 +213,37 @@ class SeniorVolunteerListView(generics.ListCreateAPIView):
     serializer_class   = SeniorVolunteerSerializer
     permission_classes = [IsAuthenticated, IsAdminOrFamily]
 
+    def perform_create(self, serializer):
+        volunteer_id = serializer.validated_data['volunteer'].pk
+
+        # Warn but don't block if volunteer is unverified
+        from .models import VolunteerProfile
+        warning = None
+        try:
+            profile = VolunteerProfile.objects.get(volunteer_id=volunteer_id)
+            if not profile.is_verified:
+                warning = 'This volunteer has not been verified yet. Assignment saved.'
+        except VolunteerProfile.DoesNotExist:
+            warning = 'Volunteer profile not found. Assignment saved anyway.'
+
+        instance = serializer.save()
+
+        # Attach warning to instance so create() can pick it up
+        if warning:
+            instance._warning = warning
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        instance = serializer.instance
+        data = serializer.data
+
+        # Inject warning into response if volunteer is unverified
+        if hasattr(instance, '_warning'):
+            data['warning'] = instance._warning
+
+        return Response(data, status=status.HTTP_201_CREATED)
 
 # =====================================================
 # DOCTOR ENDPOINTS
@@ -481,10 +512,12 @@ class ChatListView(generics.ListCreateAPIView):
         other_user_id = self.kwargs['user_id']
         me = self.request.user
         # Returns all messages between me and the other user
-        return ChatMessage.objects.filter(
-            sender_id=me.pk,     receiver_id=other_user_id
-        ) | ChatMessage.objects.filter(
-            sender_id=other_user_id, receiver_id=me.pk
+        return (
+            ChatMessage.objects.filter(
+                sender_id=me.pk, receiver_id=other_user_id
+            ) | ChatMessage.objects.filter(
+                sender_id=other_user_id, receiver_id=me.pk
+            )
         ).order_by('sent_at')
 
     def perform_create(self, serializer):
