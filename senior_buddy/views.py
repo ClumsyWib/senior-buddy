@@ -662,9 +662,8 @@ def trigger_sos(request):
     """
     POST /api/sos/trigger/
     Only seniors can trigger SOS.
-    No body needed — uses the logged-in user as the senior.
+    Body (all optional): { "latitude": ..., "longitude": ..., "address": "..." }
     """
-    # Only seniors can trigger SOS
     roles = list(request.user.userrole_set.values_list('role__role_name', flat=True))
     if 'SENIOR' not in roles:
         return Response(
@@ -673,8 +672,11 @@ def trigger_sos(request):
         )
 
     sos = SOSRequest.objects.create(
-        senior=request.user,
-        status='PENDING'
+        senior    = request.user,
+        status    = 'PENDING',
+        latitude  = request.data.get('latitude'),
+        longitude = request.data.get('longitude'),
+        address   = request.data.get('address'),
     )
     return Response(
         SOSRequestSerializer(sos).data,

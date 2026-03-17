@@ -267,7 +267,8 @@ class SOSRequestSerializer(serializers.ModelSerializer):
         model  = SOSRequest
         fields = ['sos_id', 'senior', 'senior_name', 'handled_by', 'handled_by_name',
                   'escalated_by', 'escalated_by_name', 'escalated_at',
-                  'triggered_at', 'status', 'resolved_at']
+                  'triggered_at', 'status', 'resolved_at',
+                  'latitude', 'longitude', 'address']
         read_only_fields = ['triggered_at']
 
 
