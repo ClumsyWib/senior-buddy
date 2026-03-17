@@ -817,6 +817,17 @@ class CommunityEventDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class   = CommunityEventSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdmin()]
+
+    def has_object_permission(self, request, view, obj):
+        roles = list(request.user.userrole_set.values_list('role__role_name', flat=True))
+        if 'ADMIN' in roles:
+            return True
+        return obj.created_by == request.user
+
 
 class EventAttendanceListView(generics.ListCreateAPIView):
     """GET/POST /api/events/<id>/attend/"""
