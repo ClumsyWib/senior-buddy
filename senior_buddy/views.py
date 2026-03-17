@@ -900,50 +900,36 @@ class ActivityLogListView(generics.ListCreateAPIView):
     serializer_class   = ActivityLogSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        user  = self.request.user
-        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+def perform_create(self, serializer):
+    from rest_framework.exceptions import PermissionDenied
+    user     = self.request.user
+    roles    = list(user.userrole_set.values_list('role__role_name', flat=True))
+    senior   = serializer.validated_data['senior']
+    log_type = serializer.validated_data['log_type']
 
-        if 'SENIOR' in roles:
-            # Seniors see all logs related to them
-            return ActivityLog.objects.filter(senior=user)
-        elif 'CAREGIVER' in roles or 'VOLUNTEER' in roles:
-            # Show logs they personally performed
-            return ActivityLog.objects.filter(performed_by=user)
-        elif 'FAMILY' in roles:
-            # Show logs for their linked seniors
-            senior_ids = SeniorFamily.objects.filter(
-                family=user
-            ).values_list('senior_id', flat=True)
-            return ActivityLog.objects.filter(senior_id__in=senior_ids)
-        elif 'ADMIN' in roles:
-            return ActivityLog.objects.all()
-        return ActivityLog.objects.none()
-    
-    def perform_create(self, serializer):
-        user   = self.request.user
-        roles  = list(user.userrole_set.values_list('role__role_name', flat=True))
-        senior = serializer.validated_data['senior']
+    # Only Caregivers, Volunteers, and Family can create activity logs
+    if not any(r in roles for r in ['CAREGIVER', 'VOLUNTEER', 'FAMILY']):
+        raise PermissionDenied('Only Caregivers, Volunteers, or Family can create activity logs.')
 
-        # Caregivers can only log for their assigned seniors
-        if 'CAREGIVER' in roles:
-            is_assigned = SeniorCaregiver.objects.filter(
-                caregiver=user, senior=senior
-            ).exists()
-            if not is_assigned:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied('You are not assigned to this senior.')
+    if 'CAREGIVER' in roles:
+        if log_type != 'CAREGIVER_ACTION':
+            raise PermissionDenied('Caregivers can only create CAREGIVER_ACTION logs.')
+        if not SeniorCaregiver.objects.filter(caregiver=user, senior=senior).exists():
+            raise PermissionDenied('You are not assigned to this senior.')
 
-        # Volunteers can only log for their assigned seniors
-        elif 'VOLUNTEER' in roles:
-            is_assigned = SeniorVolunteer.objects.filter(
-                volunteer=user, senior=senior
-            ).exists()
-            if not is_assigned:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied('You are not assigned to this senior.')
+    elif 'VOLUNTEER' in roles:
+        if log_type != 'VOLUNTEER_VISIT':
+            raise PermissionDenied('Volunteers can only create VOLUNTEER_VISIT logs.')
+        if not SeniorVolunteer.objects.filter(volunteer=user, senior=senior).exists():
+            raise PermissionDenied('You are not assigned to this senior.')
 
-        serializer.save(performed_by=self.request.user)
+    elif 'FAMILY' in roles:
+        if log_type != 'FAMILY_UPDATE':
+            raise PermissionDenied('Family members can only create FAMILY_UPDATE logs.')
+        if not SeniorFamily.objects.filter(family=user, senior=senior).exists():
+            raise PermissionDenied('You are not linked to this senior.')
+
+    serializer.save(performed_by=self.request.user)
     
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])

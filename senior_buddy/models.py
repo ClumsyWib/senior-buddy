@@ -546,10 +546,12 @@ class ChatMessage(models.Model):
 class ActivityLog(models.Model):
     CAREGIVER_ACTION = 'CAREGIVER_ACTION'
     VOLUNTEER_VISIT  = 'VOLUNTEER_VISIT'
+    FAMILY_UPDATE    = 'FAMILY_UPDATE'
 
     LOG_TYPE_CHOICES = [
         (CAREGIVER_ACTION, 'Caregiver Action'),
         (VOLUNTEER_VISIT,  'Volunteer Visit'),
+        (FAMILY_UPDATE,  'Family Update'),
     ]
 
     log_id       = models.AutoField(primary_key=True)
