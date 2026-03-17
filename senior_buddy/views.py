@@ -373,9 +373,29 @@ def unassign_volunteer(request, pk):
 
 class DoctorListView(generics.ListCreateAPIView):
     """GET/POST /api/doctors/"""
-    queryset           = Doctor.objects.all()
+   
     serializer_class   = DoctorSerializer
     permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self): # Only show doctors relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return Doctor.objects.all()
+        elif 'SENIOR' in roles:
+            return Doctor.objects.filter(seniordoctor__senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return Doctor.objects.filter(seniordoctor__senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return Doctor.objects.filter(seniordoctor__senior_id__in=senior_ids)
+        return Doctor.objects.none()
 
     def perform_create(self, serializer):
         serializer.save(added_by=self.request.user)
@@ -383,16 +403,58 @@ class DoctorListView(generics.ListCreateAPIView):
 
 class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/doctors/<id>/"""
-    queryset           = Doctor.objects.all()
     serializer_class   = DoctorSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrFamily]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAuthenticated(), IsNotVolunteer()]   # Senior/Caregiver/Family can view
+        return [IsAuthenticated(), IsAdminOrFamily()]      # only Admin/Family can edit/delete
+
+    def get_queryset(self): # Only allow access to doctors relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return Doctor.objects.all()
+        elif 'SENIOR' in roles:
+            return Doctor.objects.filter(seniordoctor__senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return Doctor.objects.filter(seniordoctor__senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return Doctor.objects.filter(seniordoctor__senior_id__in=senior_ids)
+        return Doctor.objects.none()
 
 
 class SeniorDoctorListView(generics.ListCreateAPIView):
     """GET/POST /api/assignments/doctors/"""
-    queryset           = SeniorDoctor.objects.select_related('senior', 'doctor').all()
     serializer_class   = SeniorDoctorSerializer
     permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self): # Only show doctor assignments relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return SeniorDoctor.objects.select_related('senior', 'doctor').all()
+        elif 'SENIOR' in roles:
+            return SeniorDoctor.objects.select_related('senior', 'doctor').filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return SeniorDoctor.objects.select_related('senior', 'doctor').filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return SeniorDoctor.objects.select_related('senior', 'doctor').filter(senior_id__in=senior_ids)
+        return SeniorDoctor.objects.none()
 
     def perform_create(self, serializer):
         user = self.request.user
