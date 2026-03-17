@@ -471,6 +471,26 @@ class HealthNoteListView(generics.ListCreateAPIView):
     serializer_class   = HealthNoteSerializer
     permission_classes = [IsAuthenticated, IsNotVolunteer]
 
+    def get_queryset(self):        # Returns notes relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return HealthNote.objects.all()
+        elif 'SENIOR' in roles:
+            return HealthNote.objects.filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return HealthNote.objects.filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return HealthNote.objects.filter(senior_id__in=senior_ids)
+        return HealthNote.objects.none()
+
     def perform_create(self, serializer):
         # Only Caregiver or Family can write notes
         roles = list(self.request.user.userrole_set.values_list('role__role_name', flat=True))
@@ -478,6 +498,7 @@ class HealthNoteListView(generics.ListCreateAPIView):
         if not any(role in roles for role in ['CAREGIVER', 'FAMILY']):
             raise PermissionDenied('Only caregivers or family members can write health notes.')
         serializer.save()
+        # view only to
 
 
 # =====================================================
