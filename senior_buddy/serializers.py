@@ -342,3 +342,17 @@ class ActivityLogSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['performed_by'] = self.context['request'].user
         return super().create(validated_data)
+    
+
+# =====================================================
+# INVITE CODE SERIALIZERS
+# =====================================================
+
+class InviteCodeGenerateSerializer(serializers.Serializer):
+    for_role = serializers.ChoiceField(choices=['CAREGIVER', 'VOLUNTEER'])
+    senior_id = serializers.IntegerField(required=False)  # only needed if Family generates for a specific senior
+
+
+class InviteCodeRedeemSerializer(serializers.Serializer):
+    code      = serializers.CharField(max_length=6)
+    senior_id = serializers.IntegerField(required=False) # only needed if Family redeems for a specific senior

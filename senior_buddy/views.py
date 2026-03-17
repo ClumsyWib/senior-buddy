@@ -12,6 +12,7 @@ from .models import (
     Reminder, HealthNote, SOSRequest,
     CommunityEvent, EventAttendance,
     ChatMessage, ActivityLog,
+    InviteCode,
 )
 from .serializers import (
     LoginSerializer, RegisterSerializer, UserSerializer,
@@ -22,6 +23,7 @@ from .serializers import (
     ReminderSerializer, HealthNoteSerializer, SOSRequestSerializer,
     CommunityEventSerializer, EventAttendanceSerializer,
     ChatMessageSerializer, ActivityLogSerializer,
+    InviteCodeGenerateSerializer, InviteCodeRedeemSerializer,
 )
 from .permissions import (
     IsAdmin, IsAdminOrFamily, IsAdminOrCaregiver,
@@ -1138,3 +1140,159 @@ def my_contacts(request):
     result.sort(key=lambda x: x['unread_count'], reverse=True)
 
     return Response(result)
+
+# =====================================================
+# INVITE CODE ENDPOINTS
+# =====================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_invite(request):
+    """
+    POST /api/invite/generate/
+    Family/Senior generates an invite code for a caregiver or volunteer.
+    Caregiver/Volunteer generates a code for a family to redeem.
+    """
+    from rest_framework.exceptions import PermissionDenied
+    serializer = InviteCodeGenerateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    user     = request.user
+    roles    = list(user.userrole_set.values_list('role__role_name', flat=True))
+    for_role = serializer.validated_data['for_role']
+    senior   = None
+
+    if 'FAMILY' in roles:
+        # Family must specify which senior the code is for
+        senior_id = serializer.validated_data.get('senior_id')
+        if not senior_id:
+            return Response(
+                {'error': 'senior_id is required for Family.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Must be linked to that senior
+        try:
+            senior = User.objects.get(pk=senior_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Senior not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not SeniorFamily.objects.filter(family=user, senior=senior).exists():
+            raise PermissionDenied('You are not linked to this senior.')
+
+    elif 'SENIOR' in roles:
+        # Senior generates for themselves
+        senior = user
+
+    elif 'CAREGIVER' in roles:
+        # Caregiver generates — senior is null until redeemed by Family
+        if for_role != 'CAREGIVER':
+            return Response(
+                {'error': 'Caregivers can only generate CAREGIVER codes.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    elif 'VOLUNTEER' in roles:
+        # Volunteer generates — senior is null until redeemed by Family
+        if for_role != 'VOLUNTEER':
+            return Response(
+                {'error': 'Volunteers can only generate VOLUNTEER codes.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    else:
+        raise PermissionDenied('You are not allowed to generate invite codes.')
+
+    invite = InviteCode.objects.create(
+        generated_by=user,
+        senior=senior,
+        for_role=for_role,
+    )
+
+    return Response({
+        'code':       invite.code,
+        'for_role':   invite.for_role,
+        'expires_at': invite.expires_at,
+        'senior':     senior.full_name if senior else None,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def redeem_invite(request):
+    """
+    POST /api/invite/redeem/
+    Caregiver/Volunteer redeems a Family/Senior generated code.
+    Family redeems a Caregiver/Volunteer generated code (must provide senior_id).
+    """
+    from rest_framework.exceptions import PermissionDenied
+    serializer = InviteCodeRedeemSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    user  = request.user
+    roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+    code  = serializer.validated_data['code'].upper()
+
+    try:
+        invite = InviteCode.objects.get(code=code)
+    except InviteCode.DoesNotExist:
+        return Response({'error': 'Invalid code.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not invite.is_valid():
+        return Response({'error': 'Code has expired or already been used.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Caregiver or Volunteer redeems a Family/Senior generated code
+    if 'CAREGIVER' in roles or 'VOLUNTEER' in roles:
+        expected_role = 'CAREGIVER' if 'CAREGIVER' in roles else 'VOLUNTEER'
+        if invite.for_role != expected_role:
+            return Response(
+                {'error': f'This code is for a {invite.for_role}, not a {expected_role}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if invite.senior is None:
+            return Response(
+                {'error': 'This code was not generated for a specific senior.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if 'CAREGIVER' in roles:
+            if SeniorCaregiver.objects.filter(senior=invite.senior, caregiver=user).exists():
+                return Response({'error': 'You are already assigned to this senior.'}, status=status.HTTP_400_BAD_REQUEST)
+            SeniorCaregiver.objects.create(senior=invite.senior, caregiver=user)
+        else:
+            if SeniorVolunteer.objects.filter(senior=invite.senior, volunteer=user).exists():
+                return Response({'error': 'You are already assigned to this senior.'}, status=status.HTTP_400_BAD_REQUEST)
+            SeniorVolunteer.objects.create(senior=invite.senior, volunteer=user)
+
+    # Family redeems a Caregiver/Volunteer generated code
+    elif 'FAMILY' in roles:
+        senior_id = serializer.validated_data.get('senior_id')
+        if not senior_id:
+            return Response(
+                {'error': 'senior_id is required when Family redeems a code.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            senior = User.objects.get(pk=senior_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Senior not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not SeniorFamily.objects.filter(family=user, senior=senior).exists():
+            raise PermissionDenied('You are not linked to this senior.')
+
+        redeemer = invite.generated_by
+        if invite.for_role == 'CAREGIVER':
+            if SeniorCaregiver.objects.filter(senior=senior, caregiver=redeemer).exists():
+                return Response({'error': 'This caregiver is already assigned to this senior.'}, status=status.HTTP_400_BAD_REQUEST)
+            SeniorCaregiver.objects.create(senior=senior, caregiver=redeemer, assigned_by=user)
+        else:
+            if SeniorVolunteer.objects.filter(senior=senior, volunteer=redeemer).exists():
+                return Response({'error': 'This volunteer is already assigned to this senior.'}, status=status.HTTP_400_BAD_REQUEST)
+            SeniorVolunteer.objects.create(senior=senior, volunteer=redeemer, assigned_by=user)
+
+    else:
+        raise PermissionDenied('You are not allowed to redeem invite codes.')
+
+    # Mark code as used
+    invite.is_used = True
+    invite.save()
+
+    return Response({'message': 'Invite redeemed successfully.'}, status=status.HTTP_200_OK)

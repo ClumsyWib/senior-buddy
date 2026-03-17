@@ -100,4 +100,10 @@ urlpatterns = [
     # ACTIVITY LOG
     # --------------------------------------------------
     path('activity/', views.ActivityLogListView.as_view(), name='activity-log'),
+
+    # --------------------------------------------------
+    # INVITES
+    # --------------------------------------------------
+    path('invite/generate/', views.generate_invite, name='invite-generate'),
+    path('invite/redeem/',   views.redeem_invite,   name='invite-redeem'),
 ]

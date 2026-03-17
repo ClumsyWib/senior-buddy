@@ -578,3 +578,57 @@ class ActivityLog(models.Model):
 
     def __str__(self):
         return f"[{self.log_type}] {self.action} — {self.senior.full_name}"
+    
+
+
+# =====================================================
+# INVITE CODE SYSTEM
+# =====================================================
+
+import random
+import string
+from django.utils import timezone
+from datetime import timedelta
+
+def generate_code():
+    """Generate a random 6-character alphanumeric code."""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def default_expiry():
+    return timezone.now() + timedelta(hours=24)
+
+class InviteCode(models.Model):
+    CAREGIVER = 'CAREGIVER'
+    VOLUNTEER = 'VOLUNTEER'
+
+    ROLE_CHOICES = [
+        (CAREGIVER, 'Caregiver'),
+        (VOLUNTEER, 'Volunteer'),
+    ]
+
+    code         = models.CharField(max_length=6, unique=True, default=generate_code)
+    generated_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='invite_codes_generated'
+    )
+    senior       = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='invite_codes',
+        null=True,
+        blank=True
+    )
+    for_role     = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    expires_at   = models.DateTimeField(default=default_expiry)
+    is_used      = models.BooleanField(default=False)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'Invite_Code'
+
+    def __str__(self): 
+        return f"{self.code} — {self.for_role} — {'Used' if self.is_used else 'Active'}"
+
+    def is_valid(self):                                               
+        return not self.is_used and timezone.now() < self.expires_at
