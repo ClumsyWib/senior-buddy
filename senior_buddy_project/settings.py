@@ -277,5 +277,4 @@ JAZZMIN_UI_TWEAKS = {
     },
 }
 # Static files for Railway
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
