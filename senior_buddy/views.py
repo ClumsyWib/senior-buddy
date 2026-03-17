@@ -123,10 +123,28 @@ def logout_view(request):
 def me_view(request):
     """
     GET /api/me/
-    Returns the currently logged-in user's details.
+    Returns the currently logged-in user's details plus their role-specific profile.
     Android uses this to know which role dashboard to show.
     """
-    return Response(UserSerializer(request.user).data)
+    user  = request.user
+    roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+    data  = UserSerializer(user).data
+
+    try:
+        if 'SENIOR' in roles:
+            data['profile'] = SeniorProfileSerializer(user.senior_profile).data
+        elif 'CAREGIVER' in roles:
+            data['profile'] = CaregiverProfileSerializer(user.caregiver_profile).data
+        elif 'FAMILY' in roles:
+            data['profile'] = FamilyProfileSerializer(user.family_profile).data
+        elif 'VOLUNTEER' in roles:
+            data['profile'] = VolunteerProfileSerializer(user.volunteer_profile).data
+        else:
+            data['profile'] = None
+    except Exception:
+        data['profile'] = None
+
+    return Response(data)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
