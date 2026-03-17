@@ -71,7 +71,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         with transaction.atomic():
 
             # 1. Create the user
-            user = User.objects.create(
+            user = User.objects.create_user(  #create_user() handles password hashing
                 username=validated_data['email'],  # Set username = email for authentication
                 email=validated_data['email'],
                 phone=validated_data['phone'],
