@@ -175,16 +175,54 @@ class SeniorProfileListView(generics.ListCreateAPIView):
     Only Admin, Caregiver, Family can see this.
     Volunteers are blocked (no medical data access).
     """
-    queryset           = SeniorProfile.objects.select_related('senior').all()
     serializer_class   = SeniorProfileSerializer
     permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self): # Only show seniors relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return SeniorProfile.objects.select_related('senior').all()
+        elif 'SENIOR' in roles:
+            return SeniorProfile.objects.select_related('senior').filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return SeniorProfile.objects.select_related('senior').filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return SeniorProfile.objects.select_related('senior').filter(senior_id__in=senior_ids)
+        return SeniorProfile.objects.none()
 
 
 class SeniorProfileDetailView(generics.RetrieveUpdateAPIView):
     """GET/PUT /api/seniors/<id>/"""
-    queryset           = SeniorProfile.objects.all()
     serializer_class   = SeniorProfileSerializer
     permission_classes = [IsAuthenticated, IsNotVolunteer]
+
+    def get_queryset(self): # Only allow access to seniors relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'ADMIN' in roles:
+            return SeniorProfile.objects.select_related('senior').all()
+        elif 'SENIOR' in roles:
+            return SeniorProfile.objects.select_related('senior').filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return SeniorProfile.objects.select_related('senior').filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return SeniorProfile.objects.select_related('senior').filter(senior_id__in=senior_ids)
+        return SeniorProfile.objects.none()
 
 
 class CaregiverProfileListView(generics.ListCreateAPIView):
@@ -453,9 +491,28 @@ class ReminderListView(generics.ListCreateAPIView):
 
 class ReminderDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/reminders/<id>/"""
-    queryset           = Reminder.objects.all()
     serializer_class   = ReminderSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self): # Only allow access to reminders relevant to the logged-in user based on their role
+        user  = self.request.user
+        roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+        if 'SENIOR' in roles:
+            return Reminder.objects.filter(senior=user)
+        elif 'CAREGIVER' in roles:
+            senior_ids = SeniorCaregiver.objects.filter(
+                caregiver=user
+            ).values_list('senior_id', flat=True)
+            return Reminder.objects.filter(senior_id__in=senior_ids)
+        elif 'FAMILY' in roles:
+            senior_ids = SeniorFamily.objects.filter(
+                family=user
+            ).values_list('senior_id', flat=True)
+            return Reminder.objects.filter(senior_id__in=senior_ids)
+        elif 'ADMIN' in roles:
+            return Reminder.objects.all()
+        return Reminder.objects.none()
 
 
 # =====================================================
