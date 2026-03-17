@@ -20,7 +20,7 @@ urlpatterns = [
     path('my-seniors/', views.my_seniors, name='my-seniors'), # Get list of seniors assigned to logged-in caregiver/family/volunteer
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # Refresh access token using refresh token — no re-login needed
     path('fcm-token/', views.update_fcm_token, name='fcm-token'), # Update FCM token for push notifications — called from mobile app when token changes
-
+    path('my-care-team/', views.my_care_team, name='my-care-team'), # Get list of all caregivers, family members, volunteers assigned to logged-in senior
     # --------------------------------------------------
     # USERS (Admin only)
     # --------------------------------------------------

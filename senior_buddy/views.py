@@ -1316,3 +1316,51 @@ def redeem_invite(request):
     invite.save()
 
     return Response({'message': 'Invite redeemed successfully.'}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_care_team(request):
+    """
+    GET /api/my-care-team/
+    Returns the full care team assigned to the logged-in senior.
+    """
+    user  = request.user
+    roles = list(user.userrole_set.values_list('role__role_name', flat=True))
+
+    if 'SENIOR' not in roles:
+        return Response(
+            {'error': 'Only seniors can access this endpoint.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    caregivers = SeniorCaregiver.objects.filter(senior=user).select_related('caregiver')
+    family     = SeniorFamily.objects.filter(senior=user).select_related('family')
+    volunteers = SeniorVolunteer.objects.filter(senior=user).select_related('volunteer')
+
+    return Response({
+        'caregivers': [
+            {
+                'user_id':    c.caregiver.pk,
+                'full_name':  c.caregiver.full_name,
+                'phone':      c.caregiver.phone,
+                'is_primary': c.is_primary,
+            }
+            for c in caregivers
+        ],
+        'family': [
+            {
+                'user_id':   f.family.pk,
+                'full_name': f.family.full_name,
+                'phone':     f.family.phone,
+            }
+            for f in family
+        ],
+        'volunteers': [
+            {
+                'user_id':   v.volunteer.pk,
+                'full_name': v.volunteer.full_name,
+                'phone':     v.volunteer.phone,
+            }
+            for v in volunteers
+        ],
+    })
