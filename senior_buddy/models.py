@@ -108,7 +108,7 @@ class SeniorProfile(models.Model):
     )
     age               = models.IntegerField(null=True, blank=True)
     medical_history   = models.TextField(blank=True, null=True)
-    emergency_contact = models.CharField(max_length=100)
+    emergency_contact = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         db_table = 'Senior_Profile'
@@ -125,7 +125,7 @@ class CaregiverProfile(models.Model):
         db_column='caregiver_id',
         related_name='caregiver_profile'
     )
-    qualification    = models.CharField(max_length=200)
+    qualification    = models.CharField(max_length=200, blank=True, default='')
     experience_years = models.IntegerField(default=0)
 
     class Meta:
