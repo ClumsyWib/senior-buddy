@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from rest_framework_simplejwt.views import TokenRefreshView
+from senior_buddy.views_ai import BuddyAIChatView
 
 
 # =====================================================
@@ -106,4 +107,9 @@ urlpatterns = [
     # --------------------------------------------------
     path('invite/generate/', views.generate_invite, name='invite-generate'),
     path('invite/redeem/',   views.redeem_invite,   name='invite-redeem'),
+
+    # --------------------------------------------------
+    # AI CHAT
+    # --------------------------------------------------
+    path('ai-chat/', BuddyAIChatView.as_view(), name='buddy-ai-chat'),    
 ]
